@@ -1,13 +1,19 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { systemPrompt } from "@/lib/prompts";
 import { parseEvents } from "@/lib/eventParser";
+import { parseTasks } from "@/lib/taskParser";
+import { parseActions } from "@/lib/actionParser";
 import type { Language } from "@/lib/languages";
 
 type ChatMessage = { role: "user" | "assistant"; text: string };
 
+type OpenTask = { title: string; description?: string };
+
 type ReqBody = {
   messages: ChatMessage[];
   language: Language;
+  city?: string | null;
+  openTasks?: OpenTask[];
 };
 
 export const runtime = "nodejs";
@@ -29,7 +35,10 @@ export async function POST(req: Request) {
   }
 
   if (!body.language || !Array.isArray(body.messages) || body.messages.length === 0) {
-    return Response.json({ error: "language and non-empty messages are required" }, { status: 400 });
+    return Response.json(
+      { error: "language and non-empty messages are required" },
+      { status: 400 }
+    );
   }
 
   const client = new Anthropic({ apiKey });
@@ -38,7 +47,11 @@ export async function POST(req: Request) {
     const response = await client.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 1024,
-      system: systemPrompt(body.language),
+      system: systemPrompt({
+        language: body.language,
+        city: body.city ?? null,
+        openTasks: body.openTasks ?? [],
+      }),
       messages: body.messages.map((m) => ({
         role: m.role,
         content: m.text,
@@ -49,9 +62,18 @@ export async function POST(req: Request) {
     const rawText =
       firstBlock && firstBlock.type === "text" ? firstBlock.text : "";
 
-    const { cleanedText, events } = parseEvents(rawText);
+    // Parse all three block types in order: events, tasks, actions.
+    // Each parser strips its own blocks from the text.
+    const eventResult = parseEvents(rawText);
+    const taskResult = parseTasks(eventResult.cleanedText);
+    const actionResult = parseActions(taskResult.cleanedText);
 
-    return Response.json({ text: cleanedText, events });
+    return Response.json({
+      text: actionResult.cleanedText,
+      events: eventResult.events,
+      tasks: taskResult.tasks,
+      actions: actionResult.actions,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return Response.json({ error: message }, { status: 500 });

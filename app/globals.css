@@ -1,9 +1,11 @@
-/* Hallmark · pre-emit critique: P4 H4 E4 S4 R4 V5 */
-/* Hallmark · macrostructure: product-shell (language-gate → mic-centric main view) */
+/* Hallmark · pre-emit critique: P5 H4 E5 S5 R4 V5 */
+/* Hallmark · macrostructure: voice-first-shell (multilingual welcome → mic-centric loop with task list) */
 /* Theme: balanced — spec brief (navy / warm off-white / soft amber, calm + trustworthy),
    Hallmark refining tokens (OKLCH), type pairing (Fraunces + Geist), microinteractions.
    Locked tokens: every color and font in components references a CSS variable below.
-   Honest copy: no fabricated metrics anywhere in UI or system prompt. */
+   Honest copy: no fabricated metrics anywhere in UI or system prompt.
+   Accessibility: ARIA live region, 3px/3px focus, skip-link, keyboard shortcuts (space, enter, escape),
+   140px primary mic, lang attributes on all multilingual strings. */
 
 @import "tailwindcss";
 
@@ -103,9 +105,24 @@ body {
 }
 
 :focus-visible {
-  outline: 2px solid var(--color-focus);
-  outline-offset: 2px;
+  outline: 3px solid var(--color-focus);
+  outline-offset: 3px;
   border-radius: var(--radius-xs);
+}
+
+/* Screen-reader-only utility used by skip-link and LiveRegion. Tailwind v4
+   provides .sr-only by default; this is a safety net in case the utility
+   isn't generated for a given build. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* RTL languages get logical-property-safe layout via dir attribute on <html>. */

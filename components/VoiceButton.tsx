@@ -34,8 +34,8 @@ export function VoiceButton({
       aria-label={ariaLabel}
       aria-pressed={isListening}
       className={
-        "relative inline-flex h-[112px] w-[112px] items-center justify-center rounded-full bg-paper-3 " +
-        "ring-1 ring-rule transition-colors disabled:opacity-50 disabled:cursor-not-allowed " +
+        "relative inline-flex h-[140px] w-[140px] items-center justify-center rounded-full bg-paper-3 " +
+        "ring-2 ring-rule transition-colors disabled:opacity-50 disabled:cursor-not-allowed " +
         "hover:ring-accent focus-visible:ring-accent " +
         (isListening ? "landed-listening" : "")
       }
@@ -60,14 +60,14 @@ export function VoiceButton({
       {isSpeaking ? (
         <span
           aria-hidden
-          className="pointer-events-none absolute inset-0 flex items-center justify-center gap-1.5"
+          className="pointer-events-none absolute inset-0 flex items-center justify-center gap-2"
         >
           {[0, 1, 2].map((i) => (
             <span
               key={i}
-              className="landed-bar inline-block w-1.5 rounded-full"
+              className="landed-bar inline-block w-2 rounded-full"
               style={{
-                height: 36,
+                height: 44,
                 backgroundColor: "var(--color-speaking)",
               }}
             />
@@ -83,8 +83,8 @@ export function VoiceButton({
 function MicIcon({ color }: { color: string }) {
   return (
     <svg
-      width="40"
-      height="40"
+      width="48"
+      height="48"
       viewBox="0 0 24 24"
       fill="none"
       stroke={color}

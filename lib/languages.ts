@@ -13,6 +13,8 @@ export type UIStrings = {
   send: string;
   replay: string;
   inNDays: (n: number) => string;
+  tasksHeading: string;
+  cityLabel: (city: string) => string;
 };
 
 export type Language = {
@@ -40,6 +42,8 @@ const en: UIStrings = {
   send: "Send",
   replay: "Replay",
   inNDays: (n) => (n === 0 ? "Today" : n === 1 ? "Tomorrow" : `In ${n} days`),
+  tasksHeading: "Things to do",
+  cityLabel: (city) => `${city}`,
 };
 
 const fr: UIStrings = {
@@ -58,6 +62,8 @@ const fr: UIStrings = {
   replay: "Réécouter",
   inNDays: (n) =>
     n === 0 ? "Aujourd'hui" : n === 1 ? "Demain" : `Dans ${n} jours`,
+  tasksHeading: "À faire",
+  cityLabel: (city) => `${city}`,
 };
 
 const pa: UIStrings = {
@@ -75,6 +81,8 @@ const pa: UIStrings = {
   send: "ਭੇਜੋ",
   replay: "ਮੁੜ ਸੁਣੋ",
   inNDays: (n) => (n === 0 ? "ਅੱਜ" : n === 1 ? "ਕੱਲ੍ਹ" : `${n} ਦਿਨਾਂ ਵਿੱਚ`),
+  tasksHeading: "ਕਰਨ ਵਾਲੇ ਕੰਮ",
+  cityLabel: (city) => `${city}`,
 };
 
 const hi: UIStrings = {
@@ -92,6 +100,8 @@ const hi: UIStrings = {
   send: "भेजें",
   replay: "फिर से सुनें",
   inNDays: (n) => (n === 0 ? "आज" : n === 1 ? "कल" : `${n} दिनों में`),
+  tasksHeading: "करने के काम",
+  cityLabel: (city) => `${city}`,
 };
 
 // Reusable multilingual voice. Aria is a default ElevenLabs voice and works with eleven_multilingual_v2.
