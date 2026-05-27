@@ -1,4 +1,4 @@
-# Landed
+# TalkToCanada
 
 Voice-first immigration assistant for newcomers to Canada. Speak in your
 language. Get clear answers about SIN, health cards, IRCC, banking, housing,
