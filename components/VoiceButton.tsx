@@ -17,14 +17,12 @@ export function VoiceButton({
   const isThinking = state === "thinking";
   const isSpeaking = state === "speaking";
 
-  const iconColor =
-    isListening
-      ? "var(--color-listening)"
-      : isSpeaking
+  const useAltSurface = isSpeaking || isThinking;
+  const iconColor = useAltSurface
+    ? isSpeaking
       ? "var(--color-speaking)"
-      : isThinking
-      ? "var(--color-thinking)"
-      : "var(--color-ink)";
+      : "var(--color-thinking)"
+    : "currentColor";
 
   return (
     <button
@@ -34,18 +32,15 @@ export function VoiceButton({
       aria-label={ariaLabel}
       aria-pressed={isListening}
       className={
-        "relative inline-flex h-[112px] w-[112px] items-center justify-center rounded-full bg-paper-3 " +
-        "ring-1 ring-rule transition-colors disabled:opacity-50 disabled:cursor-not-allowed " +
-        "hover:ring-accent focus-visible:ring-accent " +
-        (isListening ? "landed-listening" : "")
+        "voice-btn h-28 w-28 shrink-0 " +
+        (isListening ? "is-recording " : "") +
+        (useAltSurface ? "voice-btn--alt " : "")
       }
-      style={{ transitionDuration: "var(--dur-med)" }}
     >
-      {/* Thinking: rotating accent ring */}
       {isThinking ? (
         <span
           aria-hidden
-          className="landed-thinking-ring pointer-events-none absolute inset-[-6px] rounded-full"
+          className="voice-thinking-ring pointer-events-none absolute inset-[-6px] rounded-full"
           style={{
             background: `conic-gradient(from 0deg, transparent 0deg, transparent 240deg, var(--color-thinking) 360deg)`,
             WebkitMask:
@@ -56,7 +51,6 @@ export function VoiceButton({
         />
       ) : null}
 
-      {/* Speaking: equalizer bars beside the mic */}
       {isSpeaking ? (
         <span
           aria-hidden
@@ -65,7 +59,7 @@ export function VoiceButton({
           {[0, 1, 2].map((i) => (
             <span
               key={i}
-              className="landed-bar inline-block w-1.5 rounded-full"
+              className="voice-wave-bar"
               style={{
                 height: 36,
                 backgroundColor: "var(--color-speaking)",
@@ -92,7 +86,7 @@ function MicIcon({ color }: { color: string }) {
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden
-      style={{ transition: "stroke var(--dur-med) var(--ease-out-soft)" }}
+      className="transition-colors duration-200 ease-soft"
     >
       <rect x="9" y="3" width="6" height="12" rx="3" />
       <path d="M5 11a7 7 0 0 0 14 0" />

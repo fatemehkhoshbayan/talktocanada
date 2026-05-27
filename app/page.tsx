@@ -1,13 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { LanguageGate } from "@/components/LanguageGate";
-import { VoiceButton, type VoiceState } from "@/components/VoiceButton";
-import { StatusIndicator } from "@/components/StatusIndicator";
-import { Transcript } from "@/components/Transcript";
-import { MessageBubble } from "@/components/MessageBubble";
-import { CalendarButton } from "@/components/CalendarButton";
+import { BigVoiceButton } from "@/components/BigVoiceButton";
+import { Topbar } from "@/components/Topbar";
+import { ChatScreen } from "@/components/screens/ChatScreen";
+import { EndScreen } from "@/components/screens/EndScreen";
+import { HomeScreen } from "@/components/screens/HomeScreen";
+import { LanguageScreen } from "@/components/screens/LanguageScreen";
+import type { VoiceState } from "@/components/VoiceButton";
 import type { Language } from "@/lib/languages";
+import { LANGUAGES } from "@/lib/languages";
 import {
   loadLanguage,
   saveLanguage,
@@ -17,6 +19,10 @@ import {
 } from "@/lib/storage";
 import { createRecognizer, isSpeechSupported, type Recognizer } from "@/lib/speech";
 import type { CalendarEvent } from "@/lib/calendar";
+import { findTopic, topicStarter } from "@/lib/topics";
+import { homeCopy } from "@/lib/designCopy";
+
+type Screen = 1 | 2 | 3 | 4;
 
 type Message = {
   id: string;
@@ -31,10 +37,15 @@ function uid(): string {
   return Math.random().toString(36).slice(2, 10);
 }
 
+function screenClass(n: Screen, current: Screen): string {
+  return "screen s" + n + (current === n ? " active" : "");
+}
+
 export default function Page() {
+  const [screen, setScreen] = useState<Screen>(1);
   const [language, setLanguage] = useState<Language | null>(null);
-  const [gateOpen, setGateOpen] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [topicId, setTopicId] = useState<string | null>(null);
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
@@ -51,8 +62,6 @@ export default function Page() {
   useEffect(() => {
     const stored = loadLanguage();
     setLanguage(stored);
-    setGateOpen(stored === null);
-    setHydrated(true);
     if (stored?.rtl) document.documentElement.dir = "rtl";
     else document.documentElement.dir = "ltr";
     if (stored) document.documentElement.lang = stored.code;
@@ -70,6 +79,12 @@ export default function Page() {
         }))
       );
     }
+
+    if (!stored) setScreen(1);
+    else if (storedMsgs.length > 0) setScreen(3);
+    else setScreen(2);
+
+    setHydrated(true);
   }, []);
 
   useEffect(() => {
@@ -103,8 +118,29 @@ export default function Page() {
     if (switching) {
       setMessages([]);
       clearMessages();
+      setTopicId(null);
     }
-    setGateOpen(false);
+    setScreen(2);
+  }
+
+  function autoDetectLanguage() {
+    const browser = (navigator.language || "en").slice(0, 2).toLowerCase();
+    const lang =
+      LANGUAGES.find((l) => l.code === browser) ?? LANGUAGES[0];
+    pickLanguage(lang);
+  }
+
+  function openChat(id: string | null, withStarter?: boolean) {
+    setTopicId(id);
+    setScreen(3);
+    setErrorMsg(null);
+    if (withStarter && language && id) {
+      const topic = findTopic(id);
+      if (topic) {
+        const langKey = language.code === "fr" ? "fr" : "en";
+        void sendQuestion(topicStarter(topic, langKey));
+      }
+    }
   }
 
   async function speakMessage(msg: Message, lang: Language) {
@@ -151,7 +187,6 @@ export default function Page() {
     try {
       await audio.play();
     } catch {
-      // Autoplay can fail; user can still hit replay.
       if (audioRef.current === audio) audioRef.current = null;
       setSpeakingId(null);
       setVoiceState("idle");
@@ -227,9 +262,7 @@ export default function Page() {
           if (err === "not-allowed" || err === "service-not-allowed") {
             setSpeechBlocked(true);
             setTextMode(true);
-          } else if (err === "no-speech" || err === "aborted") {
-            // benign
-          } else {
+          } else if (err !== "no-speech" && err !== "aborted") {
             setErrorMsg(err);
           }
         },
@@ -256,9 +289,11 @@ export default function Page() {
     void sendQuestion(text);
   }
 
-  function replayMessage(msg: Message) {
+  function replayMessage(id: string) {
     if (!language) return;
-    if (speakingId === msg.id) {
+    const msg = messages.find((m) => m.id === id);
+    if (!msg) return;
+    if (speakingId === id) {
       stopAudio();
       setVoiceState("idle");
       return;
@@ -266,188 +301,119 @@ export default function Page() {
     void speakMessage(msg, language);
   }
 
+  function shareApp() {
+    if (!language) return;
+    const isFr = language.code === "fr";
+    const text = isFr
+      ? "Je viens de découvrir TalkToCanada — une IA vocale qui aide les nouveaux arrivants au Canada. talktocanada.ca 🍁"
+      : "Just found TalkToCanada — a voice AI that helps newcomers to Canada. talktocanada.ca 🍁";
+    void (async () => {
+      try {
+        if (navigator.share) {
+          await navigator.share({
+            title: "TalkToCanada",
+            text,
+            url: "https://talktocanada.ca",
+          });
+        } else {
+          await navigator.clipboard.writeText(text);
+        }
+      } catch {
+        /* canceled */
+      }
+    })();
+  }
+
   if (!hydrated) return null;
 
+  const copy = language ? homeCopy(language) : null;
+
   return (
-    <main className="min-h-screen">
-      {gateOpen || !language ? (
-        <LanguageGate
-          onPick={pickLanguage}
-          current={language}
-          onClose={language ? () => setGateOpen(false) : undefined}
-        />
-      ) : null}
+    <>
+      <a className="skip-link" href="#main">
+        Skip to main content
+      </a>
+      <div className="sr-only" role="status" aria-live="polite" aria-atomic="true" />
 
-      {language && !gateOpen ? (
-        <div className="mx-auto flex min-h-screen max-w-3xl flex-col px-6 py-6 md:px-10 md:py-10">
-          <header className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-sm text-muted">
-              <span aria-hidden className="inline-block h-2 w-2 rounded-full bg-accent" />
-              <span className="font-display italic text-base text-ink">Landed</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setGateOpen(true)}
-              aria-label={language.uiStrings.changeLanguage}
-              className="rounded-full px-3 py-1.5 text-sm text-muted hover:text-ink transition-colors"
-              style={{ transitionDuration: "var(--dur-fast)" }}
+      <Topbar
+        language={language}
+        onLangClick={() => {
+          if (screen === 1) return;
+          setScreen(1);
+        }}
+      />
+
+      <main className="app" id="main">
+        <section
+          className={screenClass(1, screen)}
+          aria-label="Choose your language"
+          aria-hidden={screen !== 1}
+        >
+          <LanguageScreen onPick={pickLanguage} onAutoDetect={autoDetectLanguage} />
+        </section>
+
+        {language ? (
+          <>
+            <section
+              className={screenClass(2, screen)}
+              aria-label="Home"
+              aria-hidden={screen !== 2}
             >
-              <span dir={language.rtl ? "rtl" : "ltr"} lang={language.code}>
-                {language.nativeName}
-              </span>
-              <span aria-hidden className="ml-2 text-neutral">⇄</span>
-            </button>
-          </header>
+              <HomeScreen
+                language={language}
+                onVoiceOpen={() => openChat(null)}
+                onTopicPick={(id) => openChat(id, true)}
+              />
+            </section>
 
-          {messages.length === 0 ? (
-            <div className="mt-12 md:mt-16" dir={language.rtl ? "rtl" : "ltr"}>
-              <h1
-                className="font-display leading-[1.05] tracking-[-0.01em] text-ink"
-                style={{ fontSize: "clamp(1.9rem, 4.5vw, 2.6rem)" }}
-              >
-                {language.uiStrings.welcomeHeadline}
-              </h1>
-              <p className="mt-4 max-w-xl text-lg leading-relaxed text-neutral">
-                {language.uiStrings.welcomeSub}
-              </p>
-            </div>
-          ) : null}
+            <section
+              className={screenClass(3, screen)}
+              aria-label="Voice session"
+              aria-hidden={screen !== 3}
+            >
+              <ChatScreen
+                language={language}
+                topicId={topicId}
+                messages={messages}
+                interim={interim}
+                voiceState={voiceState}
+                errorMsg={errorMsg}
+                textMode={textMode}
+                typedDraft={typedDraft}
+                speechBlocked={speechBlocked}
+                onBack={() => setScreen(2)}
+                onMic={tapMic}
+                onTypedChange={setTypedDraft}
+                onSubmitTyped={submitTyped}
+                onTextMode={setTextMode}
+                onReplay={replayMessage}
+                speakingId={speakingId}
+              />
+            </section>
 
-          <div className="mt-8 flex-1 overflow-y-auto pb-4">
-            <Transcript>
-              {messages.map((m) => (
-                <MessageBubble
-                  key={m.id}
-                  role={m.role}
-                  text={m.text}
-                  rtl={language.rtl}
-                  langCode={language.code}
-                  events={m.events}
-                  replayLabel={language.uiStrings.replay}
-                  onReplay={m.role === "assistant" ? () => replayMessage(m) : undefined}
-                  isReplaying={speakingId === m.id}
-                  isSpeaking={speakingId === m.id}
-                  calendarSlot={
-                    m.role === "assistant" && m.events && m.events.length > 0 ? (
-                      <>
-                        {m.events.map((ev, i) => (
-                          <CalendarButton
-                            key={i}
-                            event={ev}
-                            label={language.uiStrings.addToCalendar}
-                            relative={language.uiStrings.inNDays(ev.suggestedDaysFromNow)}
-                            rtl={language.rtl}
-                            langCode={language.code}
-                          />
-                        ))}
-                      </>
-                    ) : undefined
-                  }
-                />
-              ))}
-              {interim ? (
-                <div className="flex justify-end">
-                  <div
-                    className="max-w-[85%] rounded-lg bg-paper-3/40 px-4 py-3 text-base italic text-muted ring-1 ring-rule/30"
-                    dir={language.rtl ? "rtl" : "ltr"}
-                    lang={language.code}
-                  >
-                    {interim}
-                  </div>
-                </div>
-              ) : null}
-            </Transcript>
-          </div>
+            <section
+              className={screenClass(4, screen)}
+              aria-label="Share or ask another"
+              aria-hidden={screen !== 4}
+            >
+              <EndScreen
+                language={language}
+                onAskAnother={() => setScreen(2)}
+                onShare={shareApp}
+              />
+            </section>
+          </>
+        ) : null}
+      </main>
 
-          {errorMsg ? (
-            <p className="text-sm text-listening" role="alert">
-              {errorMsg}
-            </p>
-          ) : null}
-
-          <div className="sticky bottom-0 mt-4 flex flex-col items-center gap-3 bg-paper pb-4 pt-4">
-            {!textMode ? (
-              <>
-                <VoiceButton
-                  state={voiceState}
-                  onTap={tapMic}
-                  ariaLabel={language.uiStrings.micPromptIdle}
-                  disabled={voiceState === "thinking"}
-                />
-                <StatusIndicator
-                  state={voiceState}
-                  label={statusLabel(voiceState, language)}
-                />
-                <button
-                  type="button"
-                  onClick={() => setTextMode(true)}
-                  className="text-sm text-muted hover:text-ink transition-colors"
-                  style={{ transitionDuration: "var(--dur-fast)" }}
-                >
-                  {language.uiStrings.typeFallback}
-                </button>
-              </>
-            ) : (
-              <div className="w-full max-w-xl">
-                {speechBlocked ? (
-                  <p className="mb-3 text-sm text-muted" dir={language.rtl ? "rtl" : "ltr"}>
-                    {language.uiStrings.permissionDenied}
-                  </p>
-                ) : null}
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    submitTyped();
-                  }}
-                  className="flex items-end gap-2"
-                >
-                  <textarea
-                    value={typedDraft}
-                    onChange={(e) => setTypedDraft(e.target.value)}
-                    placeholder={language.uiStrings.typeFallback}
-                    dir={language.rtl ? "rtl" : "ltr"}
-                    lang={language.code}
-                    rows={2}
-                    className="min-h-[3rem] flex-1 rounded-md bg-paper-2 px-3 py-2 text-base text-ink placeholder:text-muted ring-1 ring-rule focus:outline-none focus:ring-accent transition"
-                    style={{ transitionDuration: "var(--dur-fast)" }}
-                  />
-                  <button
-                    type="submit"
-                    disabled={!typedDraft.trim() || voiceState === "thinking"}
-                    className="rounded-md bg-paper-3 px-4 py-2 text-sm font-medium text-ink ring-1 ring-rule hover:ring-accent disabled:opacity-40 transition"
-                    style={{ transitionDuration: "var(--dur-fast)" }}
-                  >
-                    {language.uiStrings.send}
-                  </button>
-                </form>
-                {!speechBlocked && isSpeechSupported() ? (
-                  <button
-                    type="button"
-                    onClick={() => setTextMode(false)}
-                    className="mt-3 text-sm text-muted hover:text-ink transition-colors"
-                    style={{ transitionDuration: "var(--dur-fast)" }}
-                  >
-                    ← Use voice
-                  </button>
-                ) : null}
-              </div>
-            )}
-          </div>
+      {screen === 2 && language && copy ? (
+        <div className="mobile-voice">
+          <BigVoiceButton
+            ariaLabel={copy.voiceLabel}
+            onClick={() => openChat(null)}
+          />
         </div>
       ) : null}
-    </main>
+    </>
   );
-}
-
-function statusLabel(state: VoiceState, lang: Language): string {
-  switch (state) {
-    case "listening":
-      return lang.uiStrings.micPromptListening;
-    case "thinking":
-      return lang.uiStrings.micPromptThinking;
-    case "speaking":
-      return lang.uiStrings.micPromptSpeaking;
-    default:
-      return lang.uiStrings.micPromptIdle;
-  }
 }

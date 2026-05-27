@@ -21,19 +21,18 @@ export function CalendarButton({
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="group flex items-start gap-3 rounded-md bg-paper-3 px-3 py-2.5 ring-1 ring-rule hover:ring-accent transition-colors"
-      style={{ transitionDuration: "var(--dur-fast)" }}
+      className="group flex items-start gap-3 rounded-md bg-card-2 px-3 py-2.5 border border-line hover:border-accent transition-colors duration-200 ease-soft"
       dir={rtl ? "rtl" : "ltr"}
       lang={langCode}
     >
       <span
         aria-hidden
-        className="mt-0.5 inline-flex h-7 w-7 flex-none items-center justify-center rounded bg-paper-2 ring-1 ring-rule group-hover:ring-accent"
+        className="mt-0.5 inline-flex h-7 w-7 flex-none items-center justify-center rounded bg-card border border-line group-hover:border-accent"
       >
         <CalIcon />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium text-ink">
+        <span className="block truncate text-sm font-medium text-text">
           {event.title}
         </span>
         <span className="mt-0.5 block text-xs text-muted">
@@ -43,8 +42,7 @@ export function CalendarButton({
       </span>
       <span
         aria-hidden
-        className="mt-0.5 flex-none text-xs text-muted group-hover:text-accent transition-colors"
-        style={{ transitionDuration: "var(--dur-fast)" }}
+        className="mt-0.5 flex-none text-xs text-muted group-hover:text-accent transition-colors duration-200 ease-soft"
       >
         {label} →
       </span>
@@ -64,6 +62,7 @@ function CalIcon() {
       strokeLinecap="round"
       strokeLinejoin="round"
       style={{ color: "var(--color-accent)" }}
+      aria-hidden
     >
       <rect x="3" y="5" width="18" height="16" rx="2" />
       <path d="M16 3v4M8 3v4M3 10h18" />

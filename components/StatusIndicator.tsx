@@ -10,20 +10,23 @@ export function StatusIndicator({ state, label }: { state: VoiceState; label: st
       ? "var(--color-thinking)"
       : state === "speaking"
       ? "var(--color-speaking)"
-      : "var(--color-rule)";
+      : "var(--color-line)";
 
   return (
-    <div
+    <p
       className="inline-flex items-center gap-2 text-sm text-muted"
       role="status"
       aria-live="polite"
     >
       <span
         aria-hidden
-        className={"inline-block h-2 w-2 rounded-full " + (state === "listening" ? "landed-listening" : "")}
+        className={
+          "inline-block h-2 w-2 rounded-full " +
+          (state === "listening" ? "animate-voice-pulse" : "")
+        }
         style={{ backgroundColor: dotColor }}
       />
-      <span>{label}</span>
-    </div>
+      {label}
+    </p>
   );
 }
