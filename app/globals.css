@@ -1,0 +1,149 @@
+/* Hallmark · pre-emit critique: P4 H4 E4 S4 R4 V5 */
+/* Hallmark · macrostructure: product-shell (language-gate → mic-centric main view) */
+/* Theme: balanced — spec brief (navy / warm off-white / soft amber, calm + trustworthy),
+   Hallmark refining tokens (OKLCH), type pairing (Fraunces + Geist), microinteractions.
+   Locked tokens: every color and font in components references a CSS variable below.
+   Honest copy: no fabricated metrics anywhere in UI or system prompt. */
+
+@import "tailwindcss";
+
+@theme {
+  /* Anchor hue: 250 (deep cool navy). Neutrals tinted with same anchor.
+     Accent: warm amber, hue 75. Ink is warm off-white (hue 80) to feel humane against navy. */
+
+  --color-paper:    oklch(15% 0.022 250);   /* deep navy surface, the page */
+  --color-paper-2:  oklch(19% 0.026 250);   /* elevated surface — language gate cards, transcript bg */
+  --color-paper-3:  oklch(23% 0.024 250);   /* most elevated — message bubbles, mic button rest */
+  --color-rule:     oklch(34% 0.018 250);   /* borders, dividers, ghost transcript outline */
+  --color-muted:    oklch(58% 0.014 245);   /* secondary text, native-name subtitles */
+  --color-neutral:  oklch(74% 0.010 240);   /* tertiary text, timestamps, helper copy */
+  --color-ink:      oklch(94% 0.012 80);    /* primary text, warm off-white */
+
+  /* Accent — soft amber. Used as highlighter, never as a fill covering more than ~5%. */
+  --color-accent:   oklch(80% 0.130 75);    /* rest amber */
+  --color-accent-2: oklch(72% 0.170 70);    /* hover/focus amber */
+  --color-focus:    oklch(85% 0.160 78);    /* focus ring */
+
+  /* Voice-state signals — three separable hues. Used only on the mic button. */
+  --color-listening: oklch(68% 0.200 25);   /* warm coral */
+  --color-thinking:  oklch(78% 0.135 75);   /* same family as accent, calm */
+  --color-speaking:  oklch(76% 0.150 145);  /* sage green */
+
+  /* Type stack. Fraunces (display) + Geist (body). System fallbacks carry non-Latin scripts. */
+  --font-display: "Fraunces", "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, ui-serif, Georgia, serif;
+  --font-body:    "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Noto Sans", sans-serif;
+
+  /* Scale — perfect-fourth (1.333). */
+  --text-xs:   0.703rem;   /* helper */
+  --text-sm:   0.844rem;   /* secondary */
+  --text-base: 1rem;       /* body */
+  --text-lg:   1.333rem;   /* lead */
+  --text-xl:   1.777rem;   /* sub-heading */
+  --text-2xl:  2.369rem;   /* heading */
+  --text-3xl:  3.157rem;   /* hero */
+  --text-4xl:  4.209rem;   /* display */
+
+  /* Radii — Hallmark prefers a single chosen value. */
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 22px;
+  --radius-full: 999px;
+
+  /* Motion — short, calm, eased. */
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-fast:   140ms;
+  --dur-med:    240ms;
+  --dur-slow:   420ms;
+}
+
+@font-face {
+  font-family: "Fraunces";
+  font-style: normal;
+  font-weight: 200 900;
+  font-display: swap;
+  src: url("https://fonts.gstatic.com/s/fraunces/v36/6NUh8FyLNQOQZAnv9bYEvDiIdE9Ea92uemAk_WBq8U_9v0c2Wa0K7iN7hzFUPJH58nib1603gg7S2nfgRYIctxs.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Fraunces";
+  font-style: italic;
+  font-weight: 200 900;
+  font-display: swap;
+  src: url("https://fonts.gstatic.com/s/fraunces/v36/6NUu8FyLNQOQZAnv9ZwYvCrSP8oRWN3GgrUu5OdU93xH95YjwgUUDFhmYrrtsdW8.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("https://fonts.gstatic.com/s/geist/v3/gyByhwUxId8gMEwYGFU4-D3W4Q.woff2") format("woff2");
+}
+
+html, body {
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  /* Layout-safety: prevent horizontal scroll on any viewport between 320 and 1920px. */
+  overflow-x: clip;
+}
+
+body {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+::selection {
+  background-color: var(--color-accent);
+  color: var(--color-paper);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
+/* RTL languages get logical-property-safe layout via dir attribute on <html>. */
+[dir="rtl"] {
+  text-align: right;
+}
+
+/* Voice state animations — used by VoiceButton only. */
+@keyframes landed-listening-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklch, var(--color-listening) 55%, transparent); }
+  50%      { box-shadow: 0 0 0 14px color-mix(in oklch, var(--color-listening) 0%, transparent); }
+}
+@keyframes landed-thinking-rotate {
+  to { transform: rotate(360deg); }
+}
+@keyframes landed-bar {
+  0%, 100% { transform: scaleY(0.3); }
+  50%      { transform: scaleY(1); }
+}
+
+.landed-listening {
+  animation: landed-listening-pulse 1.4s ease-in-out infinite;
+}
+.landed-thinking-ring {
+  animation: landed-thinking-rotate 1.6s linear infinite;
+}
+.landed-bar {
+  transform-origin: center;
+  animation: landed-bar 0.9s ease-in-out infinite;
+}
+.landed-bar:nth-child(2) { animation-delay: 0.15s; }
+.landed-bar:nth-child(3) { animation-delay: 0.3s; }
+
+/* Reduce motion respect. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
