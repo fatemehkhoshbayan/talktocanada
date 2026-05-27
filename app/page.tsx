@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { LanguageGate } from "@/components/LanguageGate";
-import { StartGate } from "@/components/StartGate";
-import { VoiceButton, type VoiceState } from "@/components/VoiceButton";
-import { StatusIndicator } from "@/components/StatusIndicator";
-import { Transcript } from "@/components/Transcript";
-import { MessageBubble } from "@/components/MessageBubble";
-import { CalendarButton } from "@/components/CalendarButton";
+import { BigVoiceButton } from "@/components/BigVoiceButton";
+import { Topbar } from "@/components/Topbar";
 import { TaskList } from "@/components/TaskList";
+import { ChatScreen } from "@/components/screens/ChatScreen";
+import { EndScreen } from "@/components/screens/EndScreen";
+import { HomeScreen } from "@/components/screens/HomeScreen";
+import { LanguageScreen } from "@/components/screens/LanguageScreen";
+import type { VoiceState } from "@/components/VoiceButton";
 import { findLanguage, LANGUAGES, type Language } from "@/lib/languages";
 import {
   loadLanguage,
@@ -25,7 +25,6 @@ import {
   saveCity,
   type StoredTask,
 } from "@/lib/storage";
-import type { AppTask } from "@/lib/taskParser";
 import {
   startRecording,
   isRecorderSupported,
@@ -35,7 +34,12 @@ import { iso1to3, iso3to1 } from "@/lib/iso";
 import type { CalendarEvent } from "@/lib/calendar";
 import type { AppAction } from "@/lib/actionParser";
 import { dispatchAll, type ActionHandlers } from "@/lib/actionDispatcher";
+import type { AppTask } from "@/lib/taskParser";
+import { findTopic, topicStarter } from "@/lib/topics";
+import { homeCopy } from "@/lib/designCopy";
 import { announce } from "@/components/LiveRegion";
+
+type Screen = 1 | 2 | 3 | 4;
 
 type Message = {
   id: string;
@@ -50,15 +54,24 @@ function uid(): string {
   return Math.random().toString(36).slice(2, 10);
 }
 
+function uidShort(): string {
+  return Math.random().toString(36).slice(2, 8);
+}
+
+function screenClass(n: Screen, current: Screen): string {
+  return "screen s" + n + (current === n ? " active" : "");
+}
+
 export default function Page() {
+  const [screen, setScreen] = useState<Screen>(1);
   const [language, setLanguage] = useState<Language | null>(null);
-  const [gateOpen, setGateOpen] = useState(false);
-  const [startGateOpen, setStartGateOpen] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [topicId, setTopicId] = useState<string | null>(null);
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [tasks, setTasks] = useState<StoredTask[]>([]);
   const [city, setCityState] = useState<string | null>(null);
+
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
   const [typedDraft, setTypedDraft] = useState("");
   const [textMode, setTextMode] = useState(false);
@@ -72,11 +85,10 @@ export default function Page() {
   const playbackRateRef = useRef(1.0);
   const lastAssistantIdRef = useRef<string | null>(null);
 
+  // -------- hydration --------
   useEffect(() => {
     const stored = loadLanguage();
     setLanguage(stored);
-    setStartGateOpen(stored === null);
-    setHydrated(true);
     if (stored?.rtl) document.documentElement.dir = "rtl";
     else document.documentElement.dir = "ltr";
     if (stored) document.documentElement.lang = stored.code;
@@ -98,15 +110,29 @@ export default function Page() {
     setTasks(loadTasks());
     setCityState(loadCity());
 
-    const storedRate = loadPlaybackRate();
-    setPlaybackRate(storedRate);
-    playbackRateRef.current = storedRate;
+    const rate = loadPlaybackRate();
+    setPlaybackRate(rate);
+    playbackRateRef.current = rate;
+
+    if (!stored) setScreen(1);
+    else if (storedMsgs.length > 0) setScreen(3);
+    else setScreen(2);
+
+    setHydrated(true);
   }, []);
 
-  function setCity(c: string | null) {
-    setCityState(c);
-    saveCity(c);
-  }
+  useEffect(() => {
+    if (!hydrated) return;
+    saveMessages(
+      messages.map((m) => ({
+        id: m.id,
+        role: m.role,
+        text: m.text,
+        events: m.events,
+        timestamp: m.timestamp,
+      }))
+    );
+  }, [messages, hydrated]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -122,64 +148,10 @@ export default function Page() {
       thinking: language.uiStrings.micPromptThinking,
       speaking: language.uiStrings.micPromptSpeaking,
     };
-    const label = labels[voiceState];
-    if (label) announce(label);
+    if (labels[voiceState]) announce(labels[voiceState]);
   }, [voiceState, hydrated, language]);
 
-  // Global keyboard shortcuts (Phase F accessibility).
-  // Space: toggle mic. Enter: replay last assistant message. Escape: stop playback.
-  // Ignored when focus is in a form field.
-  useEffect(() => {
-    if (!hydrated) return;
-    if (startGateOpen || gateOpen) return; // gates manage their own keys
-
-    function isFormFocused(): boolean {
-      const el = document.activeElement;
-      if (!el) return false;
-      const tag = el.tagName.toLowerCase();
-      return tag === "input" || tag === "textarea" || tag === "select";
-    }
-
-    function handler(e: KeyboardEvent) {
-      if (isFormFocused()) return;
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-
-      if (e.key === " ") {
-        e.preventDefault();
-        void tapMic();
-        return;
-      }
-      if (e.key === "Enter") {
-        e.preventDefault();
-        const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
-        if (lastAssistant) replayMessage(lastAssistant);
-        return;
-      }
-      if (e.key === "Escape") {
-        e.preventDefault();
-        stopAudio();
-        setVoiceState("idle");
-        return;
-      }
-    }
-
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hydrated, startGateOpen, gateOpen, messages, voiceState, language]);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    saveMessages(
-      messages.map((m) => ({
-        id: m.id,
-        role: m.role,
-        text: m.text,
-        events: m.events,
-        timestamp: m.timestamp,
-      }))
-    );
-  }, [messages, hydrated]);
+  // -------- core helpers --------
 
   function stopAudio() {
     if (audioRef.current) {
@@ -189,26 +161,50 @@ export default function Page() {
     setSpeakingId(null);
   }
 
+  function applyLanguage(lang: Language) {
+    setLanguage(lang);
+    saveLanguage(lang);
+    document.documentElement.dir = lang.rtl ? "rtl" : "ltr";
+    document.documentElement.lang = lang.code;
+  }
+
+  function pickLanguage(lang: Language) {
+    const switching = language && language.code !== lang.code;
+    stopAudio();
+    applyLanguage(lang);
+    if (switching) {
+      setMessages([]);
+      clearMessages();
+      setTopicId(null);
+    }
+    setScreen(2);
+  }
+
+  function autoDetectLanguage() {
+    const browser = (navigator.language || "en").slice(0, 2).toLowerCase();
+    const lang = LANGUAGES.find((l) => l.code === browser) ?? LANGUAGES[0];
+    pickLanguage(lang);
+  }
+
+  function setCity(c: string | null) {
+    setCityState(c);
+    saveCity(c);
+  }
+
   function changePlaybackRate(rate: number) {
     const clamped = Math.max(0.6, Math.min(1.4, rate));
     playbackRateRef.current = clamped;
     setPlaybackRate(clamped);
     savePlaybackRate(clamped);
-    if (audioRef.current) {
-      audioRef.current.playbackRate = clamped;
-    }
-  }
-
-  function uidShort(): string {
-    return Math.random().toString(36).slice(2, 8);
+    if (audioRef.current) audioRef.current.playbackRate = clamped;
   }
 
   function addTasks(newTasks: AppTask[]) {
     if (newTasks.length === 0) return;
     setTasks((curr) => {
-      const existingTitles = new Set(curr.map((t) => t.title.toLowerCase()));
+      const existing = new Set(curr.map((t) => t.title.toLowerCase()));
       const additions: StoredTask[] = newTasks
-        .filter((t) => !existingTitles.has(t.title.toLowerCase()))
+        .filter((t) => !existing.has(t.title.toLowerCase()))
         .map((t) => ({
           id: uidShort(),
           title: t.title,
@@ -249,24 +245,22 @@ export default function Page() {
     clearTasks();
     lastAssistantIdRef.current = null;
     setErrorMsg(null);
+    setTopicId(null);
   }
 
-  function applyLanguage(lang: Language) {
-    setLanguage(lang);
-    saveLanguage(lang);
-    document.documentElement.dir = lang.rtl ? "rtl" : "ltr";
-    document.documentElement.lang = lang.code;
-  }
+  // -------- chat round-trip --------
 
-  function pickLanguage(lang: Language) {
-    const switching = language && language.code !== lang.code;
-    stopAudio();
-    applyLanguage(lang);
-    if (switching) {
-      setMessages([]);
-      clearMessages();
+  function openChat(id: string | null, withStarter?: boolean) {
+    setTopicId(id);
+    setScreen(3);
+    setErrorMsg(null);
+    if (withStarter && language && id) {
+      const topic = findTopic(id);
+      if (topic) {
+        const langKey = language.code === "fr" ? "fr" : "en";
+        void sendQuestion(topicStarter(topic, langKey), language);
+      }
     }
-    setGateOpen(false);
   }
 
   async function speakMessage(msg: Message, lang: Language) {
@@ -346,7 +340,7 @@ export default function Page() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           language: lang,
-          city: city,
+          city,
           messages: next.map((m) => ({ role: m.role, text: m.text })),
           openTasks: tasks
             .filter((t) => !t.done)
@@ -364,9 +358,7 @@ export default function Page() {
         actions?: AppAction[];
       };
 
-      if (data.tasks && data.tasks.length > 0) {
-        addTasks(data.tasks);
-      }
+      if (data.tasks && data.tasks.length > 0) addTasks(data.tasks);
 
       const hasContent =
         data.text.trim() !== "" ||
@@ -389,7 +381,6 @@ export default function Page() {
         setVoiceState("idle");
       }
 
-      // Build action handlers. Some actions affect whether we speak this turn's audio.
       const handlers: ActionHandlers = {
         switchLanguageByCode: (code) => {
           const target = findLanguage(code);
@@ -426,25 +417,39 @@ export default function Page() {
     }
   }
 
+  // -------- recorder (Scribe STT) --------
+
+  async function beginRecording() {
+    try {
+      const handle = await startRecording();
+      recorderRef.current = handle;
+      setVoiceState("listening");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/denied|NotAllowed|Permission/i.test(msg)) {
+        setSpeechBlocked(true);
+        setTextMode(true);
+      } else {
+        setErrorMsg(msg);
+      }
+    }
+  }
+
   async function transcribeAndSend(blob: Blob) {
     if (!language) return;
-
     try {
       const fd = new FormData();
       fd.append("file", blob, "audio.webm");
-      // On the very first utterance we omit the hint so Scribe truly auto-detects.
-      // After that, we hint with the active language to bias accuracy without
-      // preventing override on a high-confidence detection.
+      // Hint with current language on subsequent utterances; let Scribe auto-detect
+      // the first one so language selection from speech feels truly automatic.
       if (messages.length > 0) {
         fd.append("languageHint", iso1to3(language.code));
       }
-
       const res = await fetch("/api/transcribe", { method: "POST", body: fd });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "Transcribe failed" }));
         throw new Error(err.error ?? `HTTP ${res.status}`);
       }
-
       const data = (await res.json()) as {
         text: string;
         languageCode: string | null;
@@ -457,7 +462,6 @@ export default function Page() {
         return;
       }
 
-      // Auto-switch language when Scribe is highly confident in a different one.
       let activeLang = language;
       if (data.languageCode && (data.confidence ?? 1) >= 0.7) {
         const iso1 = iso3to1(data.languageCode);
@@ -477,50 +481,17 @@ export default function Page() {
     }
   }
 
-  async function beginRecording() {
-    try {
-      const handle = await startRecording();
-      recorderRef.current = handle;
-      setVoiceState("listening");
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (
-        /denied|NotAllowed|Permission/i.test(msg) ||
-        /^not-allowed$/i.test(msg)
-      ) {
-        setSpeechBlocked(true);
-        setTextMode(true);
-      } else {
-        setErrorMsg(msg);
-      }
-    }
-  }
-
-  async function handleStart() {
-    const fallback = findLanguage("en") ?? LANGUAGES[0];
-    applyLanguage(fallback);
-    setStartGateOpen(false);
-    // Defer to next tick so the StartGate unmounts and the main view's mic
-    // button is in the DOM before the recorder permission dialog appears.
-    requestAnimationFrame(() => {
-      void beginRecording();
-    });
-  }
-
   async function tapMic() {
     if (!language) return;
-
     if (voiceState === "speaking") {
       stopAudio();
       setVoiceState("idle");
       return;
     }
-
     if (voiceState === "idle") {
       await beginRecording();
       return;
     }
-
     if (voiceState === "listening") {
       const handle = recorderRef.current;
       if (!handle) return;
@@ -529,7 +500,6 @@ export default function Page() {
       try {
         const blob = await handle.stop();
         if (blob.size < 1000) {
-          // Very short recording = nothing said; bail quietly.
           setVoiceState("idle");
           return;
         }
@@ -549,9 +519,11 @@ export default function Page() {
     void sendQuestion(text, language);
   }
 
-  function replayMessage(msg: Message) {
+  function replayMessage(id: string) {
     if (!language) return;
-    if (speakingId === msg.id) {
+    const msg = messages.find((m) => m.id === id);
+    if (!msg) return;
+    if (speakingId === id) {
       stopAudio();
       setVoiceState("idle");
       return;
@@ -559,213 +531,169 @@ export default function Page() {
     void speakMessage(msg, language);
   }
 
+  function shareApp() {
+    if (!language) return;
+    const isFr = language.code === "fr";
+    const text = isFr
+      ? "Je viens de découvrir TalkToCanada — une IA vocale qui aide les nouveaux arrivants au Canada. talktocanada.ca 🍁"
+      : "Just found TalkToCanada — a voice AI that helps newcomers to Canada. talktocanada.ca 🍁";
+    void (async () => {
+      try {
+        if (navigator.share) {
+          await navigator.share({
+            title: "TalkToCanada",
+            text,
+            url: "https://talktocanada.ca",
+          });
+        } else {
+          await navigator.clipboard.writeText(text);
+        }
+      } catch {
+        /* canceled */
+      }
+    })();
+  }
+
+  // -------- keyboard shortcuts --------
+  useEffect(() => {
+    if (!hydrated || !language) return;
+
+    function isFormFocused(): boolean {
+      const el = document.activeElement;
+      if (!el) return false;
+      const tag = el.tagName.toLowerCase();
+      return tag === "input" || tag === "textarea" || tag === "select";
+    }
+
+    function handler(e: KeyboardEvent) {
+      if (isFormFocused()) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      if (e.key === " ") {
+        e.preventDefault();
+        if (screen === 1) return; // can't record without a language yet
+        void tapMic();
+        return;
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
+        if (lastAssistant) replayMessage(lastAssistant.id);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        stopAudio();
+        setVoiceState("idle");
+      }
+    }
+
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated, language, screen, messages, voiceState]);
+
   if (!hydrated) return null;
 
+  const copy = language ? homeCopy(language) : null;
+
   return (
-    <main className="min-h-screen">
-      {startGateOpen ? (
-        <StartGate
-          onStart={handleStart}
-          onPickManually={() => {
-            setStartGateOpen(false);
-            setGateOpen(true);
-          }}
-          pickManuallyLabel="Pick a language manually"
-        />
-      ) : null}
+    <>
+      <a className="skip-link" href="#main">
+        Skip to main content
+      </a>
 
-      {!startGateOpen && gateOpen ? (
-        <LanguageGate
-          onPick={pickLanguage}
-          current={language}
-          onClose={language ? () => setGateOpen(false) : undefined}
-        />
-      ) : null}
+      <Topbar
+        language={language}
+        onLangClick={() => {
+          if (screen === 1) return;
+          setScreen(1);
+        }}
+      />
 
-      {!startGateOpen && language && !gateOpen ? (
-        <div id="main" className="mx-auto flex min-h-screen max-w-3xl flex-col px-6 py-6 md:px-10 md:py-10">
-          <header className="flex items-center justify-between gap-3">
-            <div className="flex items-baseline gap-3 text-sm text-muted">
-              <div className="flex items-center gap-2">
-                <span aria-hidden className="inline-block h-2 w-2 rounded-full bg-accent" />
-                <span className="font-display italic text-base text-ink">Landed</span>
-              </div>
-              {city ? (
-                <span className="text-xs text-muted" aria-label={`City: ${city}`}>
-                  · {city}
-                </span>
-              ) : null}
-              {playbackRate !== 1.0 ? (
-                <span className="text-xs text-muted" aria-label={`Playback rate ${playbackRate}x`}>
-                  · {playbackRate.toFixed(1)}×
-                </span>
-              ) : null}
-            </div>
-            <button
-              type="button"
-              onClick={() => setGateOpen(true)}
-              aria-label={language.uiStrings.changeLanguage}
-              className="rounded-full px-3 py-1.5 text-sm text-muted hover:text-ink transition-colors"
-              style={{ transitionDuration: "var(--dur-fast)" }}
+      <main className="app" id="main">
+        <section
+          className={screenClass(1, screen)}
+          aria-label="Choose your language"
+          aria-hidden={screen !== 1}
+        >
+          <LanguageScreen onPick={pickLanguage} onAutoDetect={autoDetectLanguage} />
+        </section>
+
+        {language ? (
+          <>
+            <section
+              className={screenClass(2, screen)}
+              aria-label="Home"
+              aria-hidden={screen !== 2}
             >
-              <span dir={language.rtl ? "rtl" : "ltr"} lang={language.code}>
-                {language.nativeName}
-              </span>
-              <span aria-hidden className="ml-2 text-neutral">⇄</span>
-            </button>
-          </header>
-
-          {messages.length === 0 ? (
-            <div className="mt-12 md:mt-16" dir={language.rtl ? "rtl" : "ltr"}>
-              <h1
-                className="font-display leading-[1.05] tracking-[-0.01em] text-ink"
-                style={{ fontSize: "clamp(1.9rem, 4.5vw, 2.6rem)" }}
-              >
-                {language.uiStrings.welcomeHeadline}
-              </h1>
-              <p className="mt-4 max-w-xl text-lg leading-relaxed text-neutral">
-                {language.uiStrings.welcomeSub}
-              </p>
-            </div>
-          ) : null}
-
-          {tasks.length > 0 ? (
-            <div className="mt-8">
-              <TaskList
-                tasks={tasks}
-                onToggle={toggleTask}
-                onClear={clearAllTasks}
-                heading={language.uiStrings.tasksHeading}
-                rtl={language.rtl}
-                langCode={language.code}
+              <HomeScreen
+                language={language}
+                onVoiceOpen={() => openChat(null)}
+                onTopicPick={(id) => openChat(id, true)}
               />
-            </div>
-          ) : null}
-
-          <div className="mt-8 flex-1 overflow-y-auto pb-4">
-            <Transcript>
-              {messages.map((m) => (
-                <MessageBubble
-                  key={m.id}
-                  role={m.role}
-                  text={m.text}
-                  rtl={language.rtl}
-                  langCode={language.code}
-                  events={m.events}
-                  replayLabel={language.uiStrings.replay}
-                  onReplay={m.role === "assistant" ? () => replayMessage(m) : undefined}
-                  isReplaying={speakingId === m.id}
-                  isSpeaking={speakingId === m.id}
-                  calendarSlot={
-                    m.role === "assistant" && m.events && m.events.length > 0 ? (
-                      <>
-                        {m.events.map((ev, i) => (
-                          <CalendarButton
-                            key={i}
-                            event={ev}
-                            label={language.uiStrings.addToCalendar}
-                            relative={language.uiStrings.inNDays(ev.suggestedDaysFromNow)}
-                            rtl={language.rtl}
-                            langCode={language.code}
-                          />
-                        ))}
-                      </>
-                    ) : undefined
-                  }
-                />
-              ))}
-            </Transcript>
-          </div>
-
-          {errorMsg ? (
-            <p className="text-sm text-listening" role="alert">
-              {errorMsg}
-            </p>
-          ) : null}
-
-          <div className="sticky bottom-0 mt-4 flex flex-col items-center gap-3 bg-paper pb-4 pt-4">
-            {!textMode ? (
-              <>
-                <VoiceButton
-                  state={voiceState}
-                  onTap={tapMic}
-                  ariaLabel={language.uiStrings.micPromptIdle}
-                  disabled={voiceState === "thinking"}
-                />
-                <StatusIndicator
-                  state={voiceState}
-                  label={statusLabel(voiceState, language)}
-                />
-                <button
-                  type="button"
-                  onClick={() => setTextMode(true)}
-                  className="text-sm text-muted hover:text-ink transition-colors"
-                  style={{ transitionDuration: "var(--dur-fast)" }}
-                >
-                  {language.uiStrings.typeFallback}
-                </button>
-              </>
-            ) : (
-              <div className="w-full max-w-xl">
-                {speechBlocked ? (
-                  <p className="mb-3 text-sm text-muted" dir={language.rtl ? "rtl" : "ltr"}>
-                    {language.uiStrings.permissionDenied}
-                  </p>
-                ) : null}
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    submitTyped();
-                  }}
-                  className="flex items-end gap-2"
-                >
-                  <textarea
-                    value={typedDraft}
-                    onChange={(e) => setTypedDraft(e.target.value)}
-                    placeholder={language.uiStrings.typeFallback}
-                    dir={language.rtl ? "rtl" : "ltr"}
-                    lang={language.code}
-                    rows={2}
-                    className="min-h-[3rem] flex-1 rounded-md bg-paper-2 px-3 py-2 text-base text-ink placeholder:text-muted ring-1 ring-rule focus:outline-none focus:ring-accent transition"
-                    style={{ transitionDuration: "var(--dur-fast)" }}
+              {tasks.length > 0 ? (
+                <div className="mx-auto mt-6 w-full max-w-xl px-4">
+                  <TaskList
+                    tasks={tasks}
+                    onToggle={toggleTask}
+                    onClear={clearAllTasks}
+                    heading={language.uiStrings.tasksHeading}
+                    rtl={language.rtl}
+                    langCode={language.code}
                   />
-                  <button
-                    type="submit"
-                    disabled={!typedDraft.trim() || voiceState === "thinking"}
-                    className="rounded-md bg-paper-3 px-4 py-2 text-sm font-medium text-ink ring-1 ring-rule hover:ring-accent disabled:opacity-40 transition"
-                    style={{ transitionDuration: "var(--dur-fast)" }}
-                  >
-                    {language.uiStrings.send}
-                  </button>
-                </form>
-                {!speechBlocked && isRecorderSupported() ? (
-                  <button
-                    type="button"
-                    onClick={() => setTextMode(false)}
-                    className="mt-3 text-sm text-muted hover:text-ink transition-colors"
-                    style={{ transitionDuration: "var(--dur-fast)" }}
-                  >
-                    ← Use voice
-                  </button>
-                ) : null}
-              </div>
-            )}
-          </div>
+                </div>
+              ) : null}
+            </section>
+
+            <section
+              className={screenClass(3, screen)}
+              aria-label="Voice session"
+              aria-hidden={screen !== 3}
+            >
+              <ChatScreen
+                language={language}
+                topicId={topicId}
+                messages={messages}
+                interim=""
+                voiceState={voiceState}
+                errorMsg={errorMsg}
+                textMode={textMode}
+                typedDraft={typedDraft}
+                speechBlocked={speechBlocked}
+                onBack={() => setScreen(2)}
+                onMic={tapMic}
+                onTypedChange={setTypedDraft}
+                onSubmitTyped={submitTyped}
+                onTextMode={setTextMode}
+                onReplay={replayMessage}
+                speakingId={speakingId}
+              />
+            </section>
+
+            <section
+              className={screenClass(4, screen)}
+              aria-label="Share or ask another"
+              aria-hidden={screen !== 4}
+            >
+              <EndScreen
+                language={language}
+                onAskAnother={() => setScreen(2)}
+                onShare={shareApp}
+              />
+            </section>
+          </>
+        ) : null}
+      </main>
+
+      {screen === 2 && language && copy ? (
+        <div className="mobile-voice">
+          <BigVoiceButton
+            ariaLabel={copy.voiceLabel}
+            onClick={() => openChat(null)}
+          />
         </div>
       ) : null}
-    </main>
+    </>
   );
-}
-
-function statusLabel(state: VoiceState, lang: Language): string {
-  switch (state) {
-    case "listening":
-      return lang.uiStrings.micPromptListening;
-    case "thinking":
-      return lang.uiStrings.micPromptThinking;
-    case "speaking":
-      return lang.uiStrings.micPromptSpeaking;
-    default:
-      return lang.uiStrings.micPromptIdle;
-  }
 }
